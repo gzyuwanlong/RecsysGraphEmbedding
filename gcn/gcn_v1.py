@@ -1,7 +1,7 @@
 """GCN using DGL nn package
 References:
 - Author: yuwanlong gzyuwanlong@163.com
-- Graph Convolutional Networks version two
+- Graph Convolutional Networks
 - Paper: https://arxiv.org/abs/1609.02907
 - Code: https://github.com/tkipf/gcn
 """
