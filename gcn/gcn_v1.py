@@ -15,6 +15,7 @@ def gcn_msg(edge):
     msg = edge.src['h'] * edge.src['norm']
     return {'m': msg}
 
+
 def gcn_reduce(node):
     accum = torch.sum(node.mailbox['m'], dim=1) * node.data['norm']
     return {'h': accum}
@@ -34,7 +35,7 @@ class NodeApplyModule(nn):
         if self.bias is not None:
             stdv = 1. / math.sqrt(self.bias.size[0])
             self.bias.data.uniform_(-stdv, stdv)
-    
+
     def forward(self, nodes):
         h = nodes.data['h']
         if self.bias is not None:
@@ -44,6 +45,9 @@ class NodeApplyModule(nn):
         return {'h': h}
 
 
+class GCNLayer(nn.Module):
+    def __init__(self, g, in_feats, out_feats, activation, dropout, bias=True):
+        super(GCNLayer, self).__init__()
 
 
 

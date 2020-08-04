@@ -1,16 +1,24 @@
-import torch 
+"""GCN using DGL nn package
+References:
+- Author: yuwanlong gzyuwanlong@163.com
+- Graph Convolutional Networks version two
+- Paper: https://arxiv.org/abs/1609.02907
+- Code: https://github.com/tkipf/gcn
+"""
+
+import torch
 import time
-import math
-import dgl
-import numpy as np 
-import torch.nn as nn 
-from dgl.data import citation_graph as citegrh 
+import argparse
+import numpy as np
+import torch.nn as nn
 from dgl import DGLGraph
-import dgl.function as fn 
-import networkx as nx 
-import torch.nn.functional as F 
+import networkx as nx
+import torch.nn.functional as F
+import utils
+from dgl.data import register_data_args
 
 from dgl.nn import GraphConv
+
 
 class GCN(nn.Module):
     def __init__(self, g, in_feats, h_hidden, n_classes, n_layers, activation, dropout):
@@ -22,7 +30,7 @@ class GCN(nn.Module):
             self.layers.append(GraphConv(h_hidden, h_hidden, activation=activation))
         self.layers.append(GraphConv(h_hidden, n_classes))
         self.dropout = nn.Dropout(p=dropout)
-    
+
     def forward(self, features):
         h = features
         for i, layers in enumerate(self.layers):
@@ -30,21 +38,10 @@ class GCN(nn.Module):
                 h = self.dropout(h)
             h = layers(self.g, h)
         return h
-    
 
-if __name__ == "__main__":
-    dropout=0.5
-    gpu=-1
-    lr=0.001
-    n_epochs=200
-    n_hidden=16
-    n_layers=2
-    weight_decay=5e-4
-    self_loop=True
 
-    data = citegrh.load_cora()
-    features = torch.FloatTensor(data.features)
-    labels = torch.LongTensor(data.labels)
+def main(args):
+    data, features, labels = utils.load_cora_data()
     train_mask = torch.BoolTensor(data.train_mask)
     val_mask = torch.BoolTensor(data.val_mask)
     test_mask = torch.BoolTensor(data.test_mask)
@@ -55,13 +52,12 @@ if __name__ == "__main__":
 
     g = data.graph
 
-    if self_loop:
+    if args.self_loop:
         g.remove_edges_from(nx.selfloop_edges(g))
         g.add_edges_from(zip(g.nodes(), g.nodes()))
     g = DGLGraph(g)
 
-
-    if gpu < 0:
+    if args.gpu < 0:
         cuda = False
     else:
         cuda = True
@@ -80,40 +76,26 @@ if __name__ == "__main__":
         norm = norm.cuda()
     g.ndata['norm'] = norm.unsqueeze(1)
 
-    # 创建一个 GCN 的模型，可以选择上面的任意一个进行初始化
     model = GCN(g,
                 in_feats,
-                n_hidden,
+                args.n_hidden,
                 n_classes,
-                n_layers,
+                args.n_layers,
                 F.relu,
-                dropout)
+                args.dropout)
 
 
     if cuda:
         model.cuda()
 
-    # 采用交叉熵损失函数和 Adam 优化器
     loss_fcn = torch.nn.CrossEntropyLoss()
 
     optimizer = torch.optim.Adam(model.parameters(),
-                                lr=lr,
-                                weight_decay=weight_decay)
+                                lr=args.lr,
+                                weight_decay=args.weight_decay)
 
-    # 定义一个评估函数
-    def evaluate(model, features, labels, mask):
-        model.eval()
-        with torch.no_grad():
-            logits = model(features)
-            logits = logits[mask]
-            labels = labels[mask]
-            _, indices = torch.max(logits, dim=1)
-            correct = torch.sum(indices == labels)
-            return correct.item() * 1.0 / len(labels)
-
-    # 训练，并评估
     dur = []
-    for epoch in range(n_epochs):
+    for epoch in range(args.n_epochs):
         model.train()
         t0 = time.time()
         # forward
@@ -127,12 +109,27 @@ if __name__ == "__main__":
         dur.append(time.time() - t0)
 
         if epoch % 10 == 0:
-            acc = evaluate(model, features, labels, val_mask)
+            acc = utils.evaluate(model, features, labels, val_mask)
             print("Epoch {:05d} | Time(s) {:.4f} | Loss {:.4f} | Accuracy {:.4f} | "
-                "ETputs(KTEPS) {:.2f}". format(epoch, np.mean(dur), loss.item(),
-                                                acc, n_edges / np.mean(dur) / 1000))
+                "ETputs(KTEPS) {:.2f}". format(epoch, np.mean(dur), loss.item(), acc, n_edges / np.mean(dur) / 1000))
 
     print()
-    acc = evaluate(model, features, labels, test_mask)
+    acc = utils.evaluate(model, features, labels, test_mask)
     print("Test accuracy {:.2%}".format(acc))
 
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="GCN")
+    register_data_args(parser)
+    parser.add_argument("--self_loop", type=bool, default=True, help="choose dataset")
+    parser.add_argument("--dropout", type=float, default=0.5, help="dropout probability")
+    parser.add_argument("--gpu", type=int, default=-1, help="gup")
+    parser.add_argument("--lr", type=float, default=1e-2, help="learning rate")
+    parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs")
+    parser.add_argument("--n_hidden", type=int, default=16, help="number of hidden gcn units")
+    parser.add_argument("--n_layers", type=int, default=1, help="number of hidden gcn layers")
+    parser.add_argument("--weight_decay", type=float, default=5e-4, help="Weight for L2 loss")
+    args = parser.parse_args()
+    print(args)
+
+    main(args)
