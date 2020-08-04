@@ -61,7 +61,7 @@ def main(args):
         cuda = False
     else:
         cuda = True
-        torch.cuda.set_device(gpu)
+        torch.cuda.set_device(args.gpu)
         features = features.cuda()
         labels = labels.cuda()
         train_mask = train_mask.cuda()
